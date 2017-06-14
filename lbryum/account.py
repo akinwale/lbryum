@@ -15,12 +15,18 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
+import hashlib
+import logging
+import ecdsa
+from ecdsa.ecdsa import generator_secp256k1
+from ecdsa.util import number_to_string, string_to_number
+from ecdsa.curves import SECP256k1
 
-import lbrycrd
-from lbrycrd import *
-from i18n import _
-from transaction import Transaction, is_extended_pubkey
-from util import print_msg, InvalidPassword
+from lbryum import lbrycrd
+from lbryum.transaction import Transaction, is_extended_pubkey
+from lbryum.util import InvalidPassword
+
+log = logging.getLogger(__name__)
 
 
 class Account(object):
@@ -64,13 +70,10 @@ class Account(object):
         return address
 
     def pubkeys_to_address(self, pubkey):
-        return public_key_to_bc_address(pubkey.decode('hex'))
+        return lbrycrd.public_key_to_bc_address(pubkey.decode('hex'))
 
     def has_change(self):
         return True
-
-    def get_name(self, k):
-        return _('Main account')
 
     def redeem_script(self, for_change, n):
         return None
@@ -118,13 +121,12 @@ class ImportedAccount(Account):
         return self.get_pubkeys(for_change, n)
 
     def get_private_key(self, sequence, wallet, password):
-        from wallet import pw_decode
         for_change, i = sequence
         assert for_change == 0
         address = self.get_addresses(0)[i]
-        pk = pw_decode(self.keypairs[address][1], password)
+        pk = lbrycrd.pw_decode(self.keypairs[address][1], password)
         # this checks the password
-        if address != address_from_private_key(pk):
+        if address != lbrycrd.address_from_private_key(pk):
             raise InvalidPassword()
         return [pk]
 
@@ -132,8 +134,7 @@ class ImportedAccount(Account):
         return False
 
     def add(self, address, pubkey, privkey, password):
-        from wallet import pw_encode
-        self.keypairs[address] = (pubkey, pw_encode(privkey, password))
+        self.keypairs[address] = (pubkey, lbrycrd.pw_encode(privkey, password))
 
     def remove(self, address):
         self.keypairs.pop(address)
@@ -141,14 +142,11 @@ class ImportedAccount(Account):
     def dump(self):
         return {'imported': self.keypairs}
 
-    def get_name(self, k):
-        return _('Imported keys')
-
     def update_password(self, old_password, new_password):
         for k, v in self.keypairs.items():
             pubkey, a = v
-            b = pw_decode(a, old_password)
-            c = pw_encode(b, new_password)
+            b = lbrycrd.pw_decode(a, old_password)
+            c = lbrycrd.pw_encode(b, new_password)
             self.keypairs[k] = (pubkey, c)
 
 
@@ -175,11 +173,11 @@ class OldAccount(Account):
 
     @classmethod
     def get_sequence(self, mpk, for_change, n):
-        return string_to_number(Hash("%d:%d:" % (n, for_change) + mpk))
+        return string_to_number(lbrycrd.Hash("%d:%d:" % (n, for_change) + mpk))
 
     def get_address(self, for_change, n):
         pubkey = self.get_pubkey(for_change, n)
-        address = public_key_to_bc_address(pubkey.decode('hex'))
+        address = lbrycrd.public_key_to_bc_address(pubkey.decode('hex'))
         return address
 
     @classmethod
@@ -198,7 +196,7 @@ class OldAccount(Account):
         secexp = (secexp + self.get_sequence(self.mpk, for_change, n)) % order
         pk = number_to_string(secexp, generator_secp256k1.order())
         compressed = False
-        return SecretToASecret(pk, compressed)
+        return lbrycrd.SecretToASecret(pk, compressed)
 
     def get_private_key(self, sequence, wallet, password):
         seed = wallet.get_seed(password)
@@ -213,15 +211,13 @@ class OldAccount(Account):
         master_private_key = ecdsa.SigningKey.from_secret_exponent(secexp, curve=SECP256k1)
         master_public_key = master_private_key.get_verifying_key().to_string()
         if master_public_key != self.mpk:
-            print_error('invalid password (mpk)', self.mpk.encode('hex'), master_public_key.encode('hex'))
+            log.error('invalid password (mpk) %s, %s', self.mpk.encode('hex'),
+                      master_public_key.encode('hex'))
             raise InvalidPassword()
         return True
 
     def get_master_pubkeys(self):
         return [self.mpk.encode('hex')]
-
-    def get_type(self):
-        return _('Old Electrum format')
 
     def get_xpubkeys(self, for_change, n):
         s = ''.join(map(lambda x: lbrycrd.int_to_hex(x, 2), (for_change, n)))
@@ -266,9 +262,9 @@ class BIP32_Account(Account):
 
     @classmethod
     def derive_pubkey_from_xpub(self, xpub, for_change, n):
-        _, _, _, c, cK = deserialize_xkey(xpub)
+        _, _, _, c, cK = lbrycrd.deserialize_xkey(xpub)
         for i in [for_change, n]:
-            cK, c = CKD_pub(cK, c, i)
+            cK, c = lbrycrd.CKD_pub(cK, c, i)
         return cK.encode('hex')
 
     def get_pubkey_from_xpub(self, xpub, for_change, n):
@@ -280,13 +276,13 @@ class BIP32_Account(Account):
     def derive_pubkeys(self, for_change, n):
         xpub = self.xpub_change if for_change else self.xpub_receive
         if xpub is None:
-            xpub = bip32_public_derivation(self.xpub, "", "/%d" % for_change)
+            xpub = lbrycrd.bip32_public_derivation(self.xpub, "", "/%d" % for_change)
             if for_change:
                 self.xpub_change = xpub
             else:
                 self.xpub_receive = xpub
-        _, _, _, c, cK = deserialize_xkey(xpub)
-        cK, c = CKD_pub(cK, c, n)
+        _, _, _, c, cK = lbrycrd.deserialize_xkey(xpub)
+        cK, c = lbrycrd.CKD_pub(cK, c, n)
         result = cK.encode('hex')
         return result
 
@@ -298,13 +294,10 @@ class BIP32_Account(Account):
             xpriv = wallet.get_master_private_key(root, password)
             if not xpriv:
                 continue
-            _, _, _, c, k = deserialize_xkey(xpriv)
-            pk = bip32_private_key(sequence, k, c)
+            _, _, _, c, k = lbrycrd.deserialize_xkey(xpriv)
+            pk = lbrycrd.bip32_private_key(sequence, k, c)
             out.append(pk)
         return out
-
-    def get_type(self):
-        return _('Standard 1 of 1')
 
     def get_xpubkeys(self, for_change, n):
         # unsorted
@@ -347,7 +340,8 @@ class Multisig_Account(BIP32_Account):
         return self.get_pubkey(for_change, n)
 
     def derive_pubkeys(self, for_change, n):
-        return map(lambda x: self.derive_pubkey_from_xpub(x, for_change, n), self.get_master_pubkeys())
+        return map(lambda x: self.derive_pubkey_from_xpub(x, for_change, n),
+                   self.get_master_pubkeys())
 
     def redeem_script(self, for_change, n):
         pubkeys = self.get_pubkeys(for_change, n)
@@ -355,7 +349,7 @@ class Multisig_Account(BIP32_Account):
 
     def pubkeys_to_address(self, pubkeys):
         redeem_script = Transaction.multisig_script(sorted(pubkeys), self.m)
-        address = hash_160_to_bc_address(hash_160(redeem_script.decode('hex')), 5)
+        address = lbrycrd.hash_160_to_bc_address(lbrycrd.hash_160(redeem_script.decode('hex')), 5)
         return address
 
     def get_address(self, for_change, n):
@@ -363,6 +357,3 @@ class Multisig_Account(BIP32_Account):
 
     def get_master_pubkeys(self):
         return self.xpub_list
-
-    def get_type(self):
-        return _('Multisig %d of %d' % (self.m, len(self.xpub_list)))

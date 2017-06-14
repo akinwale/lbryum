@@ -17,15 +17,12 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 
-import os
-import re
-import socket
 import logging
-import ssl
+import os
+import socket
 import sys
 import threading
 import time
-import traceback
 
 import requests.certs
 
@@ -35,10 +32,7 @@ if getattr(sys, 'frozen', False) and os.name == "nt":
 else:
     ca_path = requests.certs.where()
 
-import util
-import x509
-import pem
-
+from lbryum import util
 
 log = logging.getLogger(__name__)
 
@@ -69,7 +63,6 @@ class TcpConnection(threading.Thread, util.PrintError):
         self.host, self.port, self.protocol = self.server.split(':')
         self.host = str(self.host)
         self.port = int(self.port)
-        self.use_ssl = (self.protocol == 's')
 
     def diagnostic_name(self):
         return self.host
@@ -118,93 +111,9 @@ class TcpConnection(threading.Thread, util.PrintError):
             self.print_error("failed to connect", str(e))
 
     def get_socket(self):
-        if self.use_ssl:
-            cert_path = os.path.join(self.config_path, 'certs', self.host)
-            if not os.path.exists(cert_path):
-                is_new = True
-                s = self.get_simple_socket()
-                if s is None:
-                    return
-                # try with CA first
-                try:
-                    s = ssl.wrap_socket(s, ssl_version=ssl.PROTOCOL_SSLv23, cert_reqs=ssl.CERT_REQUIRED,
-                                        ca_certs=ca_path, do_handshake_on_connect=True)
-                except ssl.SSLError, e:
-                    s = None
-                if s and self.check_host_name(s.getpeercert(), self.host):
-                    self.print_error("SSL certificate signed by CA")
-                    return s
-
-                # get server certificate.
-                # Do not use ssl.get_server_certificate because it does not work with proxy
-                s = self.get_simple_socket()
-                if s is None:
-                    return
-                try:
-                    s = ssl.wrap_socket(s, ssl_version=ssl.PROTOCOL_SSLv23, cert_reqs=ssl.CERT_NONE, ca_certs=None)
-                except ssl.SSLError, e:
-                    self.print_error("SSL error retrieving SSL certificate:", e)
-                    return
-
-                dercert = s.getpeercert(True)
-                s.close()
-                cert = ssl.DER_cert_to_PEM_cert(dercert)
-                # workaround android bug
-                cert = re.sub("([^\n])-----END CERTIFICATE-----", "\\1\n-----END CERTIFICATE-----", cert)
-                temporary_path = cert_path + '.temp'
-                with open(temporary_path, "w") as f:
-                    f.write(cert)
-            else:
-                is_new = False
-
         s = self.get_simple_socket()
         if s is None:
             return
-
-        if self.use_ssl:
-            try:
-                s = ssl.wrap_socket(s,
-                                    ssl_version=ssl.PROTOCOL_SSLv23,
-                                    cert_reqs=ssl.CERT_REQUIRED,
-                                    ca_certs=(temporary_path if is_new else cert_path),
-                                    do_handshake_on_connect=True)
-            except ssl.SSLError, e:
-                self.print_error("SSL error:", e)
-                if e.errno != 1:
-                    return
-                if is_new:
-                    rej = cert_path + '.rej'
-                    if os.path.exists(rej):
-                        os.unlink(rej)
-                    os.rename(temporary_path, rej)
-                else:
-                    with open(cert_path) as f:
-                        cert = f.read()
-                    try:
-                        b = pem.dePem(cert, 'CERTIFICATE')
-                        x = x509.X509(b)
-                    except:
-                        traceback.print_exc(file=sys.stderr)
-                        self.print_error("wrong certificate")
-                        return
-                    try:
-                        x.check_date()
-                    except:
-                        self.print_error("certificate has expired:", cert_path)
-                        os.unlink(cert_path)
-                        return
-                    self.print_error("wrong certificate")
-                return
-            except BaseException, e:
-                self.print_error(e)
-                if e.errno == 104:
-                    return
-                traceback.print_exc(file=sys.stderr)
-                return
-
-            if is_new:
-                self.print_error("saving certificate")
-                os.rename(temporary_path, cert_path)
 
         return s
 
@@ -335,45 +244,9 @@ class Interface(util.PrintError):
         return responses
 
 
-def check_cert(host, cert):
-    try:
-        b = pem.dePem(cert, 'CERTIFICATE')
-        x = x509.X509(b)
-    except:
-        traceback.print_exc(file=sys.stdout)
-        return
-
-    try:
-        x.check_date()
-        expired = False
-    except:
-        expired = True
-
-    m = "host: %s\n" % host
-    m += "has_expired: %s\n" % expired
-    util.print_msg(m)
-
-
 # Used by tests
 def _match_hostname(name, val):
     if val == name:
         return True
 
     return val.startswith('*.') and name.endswith(val[1:])
-
-
-def test_certificates():
-    from simple_config import SimpleConfig
-    config = SimpleConfig()
-    mydir = os.path.join(config.path, "certs")
-    certs = os.listdir(mydir)
-    for c in certs:
-        print c
-        p = os.path.join(mydir, c)
-        with open(p) as f:
-            cert = f.read()
-        check_cert(c, cert)
-
-
-if __name__ == "__main__":
-    test_certificates()

@@ -20,56 +20,18 @@
 import os
 import sys
 
-
 script_dir = os.path.dirname(os.path.realpath(__file__))
 is_bundle = getattr(sys, 'frozen', False)
 is_local = not is_bundle and os.path.exists(os.path.join(script_dir, "setup-release.py"))
 is_android = 'ANDROID_DATA' in os.environ
-is_kivy = os.environ.get('PYTHONHOME','').find('kivy') != -1
+is_kivy = os.environ.get('PYTHONHOME', '').find('kivy') != -1
 
-if is_local or is_android:
-    sys.path.insert(0, os.path.join(script_dir, 'packages'))
-elif is_bundle and sys.platform=='darwin':
-    sys.path.insert(0, os.getcwd() + "/lib/python2.7/packages")
-
-# pure-python dependencies need to be imported here for pyinstaller
-try:
-    import dns
-    import aes
-    import ecdsa
-    import requests
-    import six
-    import qrcode
-    import pbkdf2
-    import google.protobuf
-except ImportError as e:
-    sys.exit("Error: %s. Try 'sudo pip install <module-name>'"%e.message)
-
-# the following imports are for pyinstaller
-from google.protobuf import descriptor
-from google.protobuf import message
-from google.protobuf import reflection
-from google.protobuf import descriptor_pb2
-
-
-# check that we have the correct version of ecdsa
-try:
-    from ecdsa.ecdsa import curve_secp256k1, generator_secp256k1
-except Exception:
-    sys.exit("cannot import ecdsa.curve_secp256k1. You probably need to upgrade ecdsa.\nTry: sudo pip install --upgrade ecdsa")
-
-
-# load local module as lbryum
-if is_bundle or is_local or is_android:
-    import imp
-    imp.load_module('lbryum', *imp.find_module('lib'))
-    imp.load_module('lbryum_gui', *imp.find_module('gui'))
-
+import requests
 
 from lbryum import util
-from lbryum import SimpleConfig, Network, Wallet, WalletStorage
-from lbryum.util import print_msg, print_error, print_stderr, json_encode, json_decode, set_verbosity, InvalidPassword
-from lbryum.plugins import Plugins
+from lbryum.network import SimpleConfig, Network
+from lbryum.wallet import Wallet, WalletStorage
+from lbryum.util import print_msg, print_stderr, json_encode, json_decode, set_verbosity, InvalidPassword
 from lbryum.commands import get_parser, known_commands, Commands, config_variables
 from lbryum.daemon import Daemon, get_daemon
 
@@ -85,7 +47,6 @@ def prompt_password(prompt, confirm=True):
     if not password:
         password = None
     return password
-
 
 
 def init_gui(config, network, daemon, plugins):
@@ -109,7 +70,8 @@ def run_non_RPC(config):
 
     if cmdname == 'restore':
         text = config.get('text')
-        password = password_dialog() if Wallet.is_seed(text) or Wallet.is_xprv(text) or Wallet.is_private_key(text) else None
+        password = password_dialog() if Wallet.is_seed(text) or Wallet.is_xprv(
+            text) or Wallet.is_private_key(text) else None
         try:
             wallet = Wallet.from_text(text, password, storage)
         except BaseException as e:
@@ -135,28 +97,30 @@ def run_non_RPC(config):
         wallet.create_main_account()
         wallet.synchronize()
         print_msg("Your wallet generation seed is:\n\"%s\"" % seed)
-        print_msg("Please keep it in a safe place; if you lose it, you will not be able to restore your wallet.")
+        print_msg(
+            "Please keep it in a safe place; if you lose it, you will not be able to restore your wallet.")
 
-    elif cmdname == 'deseed':
-        if not wallet.seed:
-            print_msg("Error: This wallet has no seed")
-        else:
-            ns = wallet.storage.path + '.seedless'
-            print_msg("Warning: you are going to create a seedless wallet'\nIt will be saved in '%s'" % ns)
-            if raw_input("Are you sure you want to continue? (y/n) ") in ['y', 'Y', 'yes']:
-                wallet.storage.path = ns
-                wallet.seed = ''
-                wallet.storage.put('seed', '')
-                wallet.use_encryption = False
-                wallet.storage.put('use_encryption', wallet.use_encryption)
-                for k in wallet.imported_keys.keys():
-                    wallet.imported_keys[k] = ''
-                wallet.storage.put('imported_keys', wallet.imported_keys)
-                print_msg("Done.")
-            else:
-                print_msg("Action canceled.")
-        wallet.storage.write()
-        sys.exit(0)
+    # elif cmdname == 'deseed':
+    #     if not wallet.seed:
+    #         print_msg("Error: This wallet has no seed")
+    #     else:
+    #         ns = wallet.storage.path + '.seedless'
+    #         print_msg(
+    #             "Warning: you are going to create a seedless wallet'\nIt will be saved in '%s'" % ns)
+    #         if raw_input("Are you sure you want to continue? (y/n) ") in ['y', 'Y', 'yes']:
+    #             wallet.storage.path = ns
+    #             wallet.seed = ''
+    #             wallet.storage.put('seed', '')
+    #             wallet.use_encryption = False
+    #             wallet.storage.put('use_encryption', wallet.use_encryption)
+    #             for k in wallet.imported_keys.keys():
+    #                 wallet.imported_keys[k] = ''
+    #             wallet.storage.put('imported_keys', wallet.imported_keys)
+    #             print_msg("Done.")
+    #         else:
+    #             print_msg("Action canceled.")
+    #     wallet.storage.write()
+    #     sys.exit(0)
 
     wallet.storage.write()
     print_msg("Wallet saved in '%s'" % wallet.storage.path)
@@ -194,7 +158,8 @@ def init_cmdline(config_options):
     if cmd.name in ['getprivatekeys']:
         print_stderr("WARNING: ALL your private keys are secret.")
         print_stderr("Exposing a single private key can compromise your entire wallet!")
-        print_stderr("In particular, DO NOT use 'redeem private key' services proposed by third parties.")
+        print_stderr(
+            "In particular, DO NOT use 'redeem private key' services proposed by third parties.")
 
     # commands needing password
     if cmd.requires_password and storage.get('use_encryption'):
@@ -249,8 +214,7 @@ def run_offline_command(config, config_options):
     return result
 
 
-if __name__ == '__main__':
-
+def main():
     # make sure that certificates are here
     assert os.path.exists(requests.utils.DEFAULT_CA_BUNDLE_PATH)
 
@@ -258,7 +222,7 @@ if __name__ == '__main__':
     sys.argv = filter(lambda x: not x.startswith('-psn'), sys.argv)
 
     # old 'help' syntax
-    if len(sys.argv)>1 and sys.argv[1] == 'help':
+    if len(sys.argv) > 1 and sys.argv[1] == 'help':
         sys.argv.remove('help')
         sys.argv.append('-h')
 
@@ -285,7 +249,7 @@ if __name__ == '__main__':
             'verbose': True,
             'cmd': 'gui',
             'gui': 'kivy' if is_kivy else 'android',
-            #'auto_connect': True,
+            # 'auto_connect': True,
         }
     else:
         config_options = args.__dict__
@@ -296,7 +260,8 @@ if __name__ == '__main__':
             config_options['auto_connect'] = False
 
     if config_options.get('portable'):
-        config_options['electrum_path'] = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'electrum_data')
+        config_options['electrum_path'] = os.path.join(os.path.dirname(os.path.realpath(__file__)),
+                                                       'electrum_data')
 
     set_verbosity(config_options.get('verbose'))
 
@@ -312,8 +277,6 @@ if __name__ == '__main__':
     cmdname = config.get('cmd')
 
     # initialize plugins.
-    gui_name = config.get('gui', 'qt') if cmdname == 'gui' else 'cmdline'
-    plugins = Plugins(config, is_bundle or is_local or is_android, gui_name)
 
     # run non-RPC commands separately
     if cmdname in ['create', 'restore', 'deseed']:
@@ -323,23 +286,7 @@ if __name__ == '__main__':
     # check if a daemon is running
     server = get_daemon(config)
 
-    if cmdname == 'gui':
-        if server is not None:
-            result = server.gui(config_options)
-        else:
-            if not config.get('offline'):
-                network = Network(config)
-                network.start()
-            else:
-                network = None
-            daemon = Daemon(config, network)
-            daemon.start()
-            gui = init_gui(config, network, daemon, plugins)
-            daemon.gui = gui
-            gui.main()
-            sys.exit(0)
-
-    elif cmdname == 'daemon':
+    if cmdname == 'daemon':
         if server is not None:
             result = server.daemon(config_options)
         else:
@@ -362,7 +309,7 @@ if __name__ == '__main__':
                     daemon.join()
                     sys.exit(0)
                 else:
-                    print_stderr("starting daemon (PID %d)"%p)
+                    print_stderr("starting daemon (PID %d)" % p)
                     sys.exit(0)
             else:
                 print_msg("syntax: lbryum daemon <start|status|stop>")
@@ -384,3 +331,7 @@ if __name__ == '__main__':
     # print result
     print_msg(json_encode(result))
     sys.exit(0)
+
+
+if __name__ == '__main__':
+    main()

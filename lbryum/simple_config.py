@@ -1,15 +1,16 @@
 import ast
 import json
-import threading
 import os
-
+import threading
 from copy import deepcopy
-from util import user_dir, print_error, print_msg, print_stderr
+
+from util import print_error, print_stderr, user_dir
 
 SYSTEM_CONFIG_PATH = "/etc/lbryum.conf"
 
 config = None
 NULL = object()
+
 
 def get_config():
     global config
@@ -20,10 +21,10 @@ def set_config(c):
     global config
     config = c
 
+
 DEFAULT_CONFIG = {
     'default_servers': {
-        'lbryum6.lbry.io': {'t': '50001'},
-        'lbryum7.lbry.io': {'t': '50001'},
+        'jack.lbry.tech': {'t': '50001'},
     },
     'chain': 'lbrycrd_main'
 }
@@ -41,6 +42,7 @@ class SimpleConfig(object):
     They are taken in order (1. overrides config options set in 2., that
     override config set in 3.)
     """
+
     def __init__(self, options={}, read_system_config_function=None,
                  read_user_config_function=None, read_user_dir_function=None,
                  default_config=None):
@@ -110,7 +112,7 @@ class SimpleConfig(object):
         if self.fixup_config_keys(self.user_config, keypairs):
             self.save_user_config()
 
-    def set_key(self, key, value, save = True):
+    def set_key(self, key, value, save=True):
         if not self.is_modifiable(key):
             print_stderr("Warning: not changing config key '%s' set on the command line" % key)
             return
@@ -203,6 +205,7 @@ def read_system_config(path=SYSTEM_CONFIG_PATH):
             pass
 
     return result
+
 
 def read_user_config(path):
     """Parse and store the user config settings in lbryum.conf into user_config[]."""
