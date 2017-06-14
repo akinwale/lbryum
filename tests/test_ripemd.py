@@ -2,7 +2,7 @@ import unittest
 import random
 import hashlib
 
-from lib import ripemd
+from lbryum import ripemd
 
 class Test_RIPEMD160(unittest.TestCase):
     """ Test pure Python implementation against standard library. """

@@ -1,8 +1,8 @@
 import unittest
 import binascii
-from lib import lbrycrd
-from lib import claims
-from lib import commands
+from lbryum import lbrycrd
+from lbryum import claims
+from lbryum import commands
 
 def get_powhash(input_str):
     out=lbrycrd.PoWHash(input_str)

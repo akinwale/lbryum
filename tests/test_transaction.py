@@ -1,6 +1,6 @@
 import unittest
-from lib import transaction
-from lib.lbrycrd import TYPE_ADDRESS
+from lbryum import transaction
+from lbryum.lbrycrd import TYPE_ADDRESS
 
 import pprint
 

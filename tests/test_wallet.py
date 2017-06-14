@@ -6,7 +6,7 @@ import os
 import json
 
 from StringIO import StringIO
-from lib.wallet import WalletStorage, NewWallet
+from lbryum.wallet import WalletStorage, NewWallet
 
 
 class FakeSynchronizer(object):

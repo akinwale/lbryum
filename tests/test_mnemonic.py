@@ -1,6 +1,6 @@
 import unittest
-from lib import mnemonic
-from lib import old_mnemonic
+from lbryum import mnemonic
+from lbryum import old_mnemonic
 
 class Test_NewMnemonic(unittest.TestCase):
 

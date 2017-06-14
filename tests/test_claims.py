@@ -1,6 +1,6 @@
 import unittest
 import binascii
-from lib import claims
+from lbryum import claims
 
 
 class TestClaims(unittest.TestCase):
