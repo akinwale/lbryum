@@ -23,7 +23,7 @@ from lbryum import __version__
 from lbryum.contacts import Contacts
 from lbryum.constants import COIN, TYPE_ADDRESS, TYPE_CLAIM, TYPE_SUPPORT, TYPE_UPDATE
 from lbryum.constants import RECOMMENDED_CLAIMTRIE_HASH_CONFIRMS
-from lbryum.hashing import Hash, hash_160
+from lbryum.hashing import Hash, hash_160, hash_encode
 from lbryum.claims import verify_proof
 from lbryum.lbrycrd import hash_160_to_bc_address, is_address, decode_claim_id_hex
 from lbryum.lbrycrd import encode_claim_id_hex, encrypt_message, public_key_from_private_key
@@ -162,7 +162,8 @@ class Commands(object):
         if self.wallet.use_encryption and not password:
             # see if we can find the wallet password in the key ring, if not the user must
             # provide it
-            password = _KEY_RING.get_password("lbryum", getpass.getuser())
+            master_pub_key = hash_encode(Hash(self.wallet.get_master_public_key()))
+            password = _KEY_RING.get_password("lbryum-%s" % master_pub_key, getpass.getuser())
             if password:
                 self.unlock_wallet(password)
                 log.info("unlocked the wallet using password from %s" % _KEY_RING.name)
@@ -214,7 +215,8 @@ class Commands(object):
             self.new_password = new_password
             self.wallet.update_password(self._password, self.new_password)
             if update_keyring:
-                _KEY_RING.set_password("lbryum", getpass.getuser(), new_password)
+                master_pub_key = hash_encode(Hash(self.wallet.get_master_public_key()))
+                _KEY_RING.set_password("lbryum-%s" % master_pub_key, getpass.getuser(), new_password)
             self.wallet.storage.write()
             self._password = self.new_password
         return

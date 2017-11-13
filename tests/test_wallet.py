@@ -102,3 +102,6 @@ class TestNewWallet(WalletTestCase):
         new_password = "secret2"
         self.wallet.update_password(self.password, new_password)
         self.wallet.get_seed(new_password)
+
+
+class TestWalletEncryption(WalletTestCase):
